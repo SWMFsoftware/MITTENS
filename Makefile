@@ -88,6 +88,7 @@ BLESS     = NO
 test:
 	rm -f test*.diff
 	${MAKE} test_shock
+	${MAKE} test_shock_append TESTDIR=run_test_append
 	ls -l test*.diff
 
 ### Shock acceleration test: frozen-seed 100 s analytic-shock (DSA) run
@@ -134,6 +135,51 @@ test_shock_check:
 	@if [ -s test_shock.diff ]; then \
 		echo "PT/MITTENS test_shock FAILED (see test_shock.diff)"; exit 1; \
 	else echo "PT/MITTENS test_shock PASSED"; fi
+
+### Same as test_shock, but the per-time MH data files are concatenated in
+### time into a single MH_data_001_001.out read with #APPENDMHDATA. The
+### per-time files and MH_data.lst are removed, so only the appended file can
+### be read. The results must reproduce the test_shock reference, so this
+### test never blesses it.
+test_shock_append:
+	@echo "test_shock_append_compile..." > test_shock_append.diff
+	${MAKE} MITTENS
+	@echo "test_shock_append_rundir..." >> test_shock_append.diff
+	${MAKE} test_shock_append_rundir
+	@echo "test_shock_append_run..." >> test_shock_append.diff
+	${MAKE} test_shock_run
+	@echo "test_shock_append_check..." >> test_shock_append.diff
+	${MAKE} test_shock_append_check
+
+test_shock_append_rundir:
+	rm -rf ${TESTDIR}
+	${MAKE} rundir RUNDIR=${TESTDIR} STANDALONE=YES PTDIR=`pwd`
+	cp -f Param/PARAM.in.test.shock.append ${TESTDIR}/PARAM.in
+	cd ${TESTDIR}; tar xzf ${MYDIR}/data/input/test_shock/MH_data_shock.tgz
+	cd ${TESTDIR}/MH_data_shock; \
+		for Tag in `cat MH_data.lst`; do \
+			cat MH_data_001_001_$${Tag}.out || exit 1; \
+		done > MH_data_001_001.out && \
+		rm -f MH_data_001_001_time_*.out MH_data.lst
+
+test_shock_append_check:
+	@rm -f test_shock_append.diff
+	@if [ ! -f ${TESTDIR}/MITTENS.SUCCESS ]; then \
+		echo "run did not complete (no MITTENS.SUCCESS)" \
+			> test_shock_append.diff; \
+		ls -l test_shock_append.diff; exit 1; fi
+	cd ${TESTDIR}/PT/IO2; cat \
+		distfunc_time_1 distfunc_time_50 distfunc_time_100 \
+		acceleration_time.dat > test_shock_append.outs
+	-@(${SCRIPTDIR}/DiffNum.pl -t -r=1e-12 \
+		${TESTDIR}/PT/IO2/test_shock_append.outs \
+		data/output/test_shock/test_shock.ref.gz \
+		> test_shock_append.diff)
+	@ls -l test_shock_append.diff
+	@if [ -s test_shock_append.diff ]; then \
+		echo "PT/MITTENS test_shock_append FAILED" \
+			"(see test_shock_append.diff)"; exit 1; \
+	else echo "PT/MITTENS test_shock_append PASSED"; fi
 
 RUNDIRLOC = run
 
