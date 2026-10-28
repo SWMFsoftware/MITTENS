@@ -245,9 +245,11 @@ NameTagFile is only used when UseAppendedRead is false in #APPENDMHDATA.
 
 <command name="APPENDMHDATA" if="$_IsFirstSession">
   <parameter name="UseAppendedRead" type="logical" default="F"/>
+  <parameter name="UseAppendedWrite" type="logical" default="F"/>
 
 #APPENDMHDATA
 T		UseAppendedRead
+F		UseAppendedWrite
 
 If UseAppendedRead is true, the field line background is read from a
 single file with all time levels appended (MH_data_iLon_iLat.out, as
@@ -255,6 +257,13 @@ written by MFLAMPA with UseAppendedWrite): each iteration reads the next
 appended block instead of consuming a tag from NameTagFile, and the run
 stops when the end of the file is reached. The default is false, i.e.
 tag file driven reading of one file per time level.
+
+UseAppendedWrite only matters if the MH data are saved (DoSaveMhData in
+#SAVEOUTPUT). If true, all time levels are appended to a single file
+PT/IO2/MH_data_iLon_iLat.out, which is replaced at the start of the run.
+The default is false, i.e. one file per time level (see #SAVEOUTPUT).
+The input and output directories must be different when both
+UseAppendedRead and UseAppendedWrite are true.
 </command>
 
 </commandgroup>
@@ -489,10 +498,20 @@ each particle contributes weight*dt per step).
 </command>
 
 <command name="SAVEOUTPUT">
+  <parameter name="DoSaveMhData" type="logical" default="F"/>
 
 #SAVEOUTPUT
+F			DoSaveMhData
 
-Reserved for output control parameters; currently reads nothing.
+If DoSaveMhData is true, the field line (MH) data read at each data time
+are saved into PT/IO2/ in the format read by #READMHDATA and #MHDATA: the
+13 MH variables on the Lagrangian grid, with the foot point coordinates,
+the shock location (iShock and RShock, -1 if there is no shock) and the
+start time as parameters. By default each time level is saved to
+MH_data_iLon_iLat_t[ddhhmmss]_n[iIter].out and its tag is added to
+PT/IO2/MH_data.lst; with UseAppendedWrite in #APPENDMHDATA all time levels
+are appended to MH_data_iLon_iLat.out. iLon and iLat are iLonFile and
+iLatFile of #READMHDATA. The default is false.
 </command>
 
 </commandgroup>

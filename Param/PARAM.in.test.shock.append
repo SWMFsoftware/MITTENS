@@ -13,6 +13,7 @@ MH_data.lst     NameTagFile # not used with #APPENDMHDATA
 
 #APPENDMHDATA
 T           UseAppendedRead
+F           UseAppendedWrite
 
 #COORDSYSTEM
 GSM      TypeCoordSystem

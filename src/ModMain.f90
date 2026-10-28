@@ -197,7 +197,8 @@ contains
       use PT_ModTime, ONLY: PTTime, DataInputTime, iIter
       use PT_ModAdvance, ONLY: advance
       use PT_ModPlot, ONLY: save_analytic_solution, save_shock_location, &
-                                     save_plot_all, save_distribution_function
+                                     save_plot_all, save_distribution_function, &
+                                     save_mh_data, DoSaveMhData
       use PT_ModProc, ONLY: iComm, iError
 
       ! advance the solution in time
@@ -219,6 +220,8 @@ contains
             if(DoSharpenShock) call sharpen_shock
             call save_analytic_solution
          end if
+         ! save the MH data read at initialization
+         if(DoSaveMhData) call save_mh_data(iIter)
          IsFirstCall = .false.
       end if
 
@@ -243,6 +246,7 @@ contains
 
       if(DoSharpenShock) call sharpen_shock
       call save_shock_location
+      if(DoSaveMhData) call save_mh_data(iIter + 1)
 
       TimeLimit = min(DataInputTime, TimeMax)
       if(iProc == 0) then

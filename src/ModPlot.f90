@@ -18,6 +18,11 @@ module PT_ModPlot
   character(len=*), parameter :: RFile = 'R_bin.dat'
   character(len=*), parameter :: ShockLocFile = 'shock_loc.dat'
   character(len=*), parameter :: EarthFile = 'intflux_earth.dat'
+  ! list of time tags of the saved MH data files (as read by #MHDATA)
+  character(len=*), parameter :: MhDataTagFile = 'MH_data.lst'
+
+  ! If true, save the field line (MH) data read at each data time
+  logical :: DoSaveMhData = .false.
 
 contains
   !============================================================================
@@ -31,15 +36,18 @@ contains
     !--------------------------------------------------------------------------
     select case(NameCommand)
     case('#SAVEOUTPUT')
-      ! maybe something will go here one day
+      call read_var('DoSaveMhData', DoSaveMhData)
     case default
        call CON_stop(NameSub//' Unknown command '//NameCommand)
     end select
   end subroutine read_param
   !============================================================================
   subroutine init
-    use ModUtilities, only: touch_file
+    use ModUtilities, only: touch_file, remove_file
     use PT_ModDistribution, only: EnergyBin_I, LagrBin_I
+    use PT_ModReadMhData, only: UseAppendedWrite
+
+    character(len=100) :: NameFile
 
     ! Only rank 0 creates output files: all saving below is done by rank 0,
     ! and concurrent creation of the same file can fail on some filesystems
@@ -62,6 +70,17 @@ contains
 
     ! Create file that will hold integral fluxes at Earth
     call touch_file(OutputDir//EarthFile)
+
+    ! Start the saved MH data from scratch: an empty tag list, or no
+    ! appended file (it is created by the first save)
+    if(DoSaveMhData) then
+      if(UseAppendedWrite) then
+        call make_mh_data_file_name('', NameFile)
+        call remove_file(NameFile)
+      else
+        call touch_file(OutputDir//MhDataTagFile)
+      end if
+    end if
 
   end subroutine init
   !============================================================================
@@ -182,6 +201,120 @@ contains
     close(104)
 
   end subroutine save_shock_location
+  !============================================================================
+  subroutine save_mh_data(iIterIn)
+
+    ! Save the field line data read at DataInputTime in the format read by
+    ! PT_ModReadMhData: one file per time level, MH_data_iLon_iLat_<tag>.out,
+    ! with the tag added to MH_data.lst, or with UseAppendedWrite all time
+    ! levels appended to MH_data_iLon_iLat.out. The tag is t<ddhhmmss>_n<iIter>
+    ! as in MFLAMPA. Currently only designed for one fieldline!
+    use ModPlotFile, only: save_plot_file
+    use PT_ModGrid, only: MHData_VIB, State_VIB, FootPoint_VB, iShock_IB, &
+         MinLagr, MaxLagr, nMhData, NameVar_V, TypeCoordSystem, LagrID_, Z_, &
+         R_, Shock_, NoShock_
+    use PT_ModTime, only: DataInputTime, StartTime, StartTimeJulian
+    use PT_ModReadMhData, only: UseAppendedWrite
+
+    integer, intent(in) :: iIterIn
+
+    integer :: iLine = 1, iShock, iVar
+    ! parameters of the field line, as in MFLAMPA
+    integer, parameter :: RShock_ = Z_ + 2, StartTime_ = RShock_ + 1, &
+         StartJulian_ = StartTime_ + 1
+    real :: Param_I(LagrID_:StartJulian_)
+    character(len=8)   :: StringTime
+    character(len=50)  :: StringTag
+    character(len=100) :: NameFile
+    character(len=500) :: NameVar
+    !--------------------------------------------------------------------------
+    if(iProc /= 0) RETURN
+
+    ! foot point, shock location (-1 if none) and start time
+    Param_I(LagrID_:Z_) = FootPoint_VB(LagrID_:Z_, iLine)
+    iShock = iShock_IB(Shock_, iLine)
+    if(iShock /= NoShock_) then
+      Param_I(RShock_-1) = real(iShock)
+      Param_I(RShock_)   = State_VIB(R_, iShock, iLine)
+    else
+      Param_I(RShock_-1:RShock_) = -1.0
+    end if
+    Param_I(StartTime_)   = StartTime
+    Param_I(StartJulian_) = StartTimeJulian
+
+    ! names of the coordinate, the variables and the parameters
+    NameVar = NameVar_V(LagrID_)
+    do iVar = 1, nMhData
+      NameVar = trim(NameVar)//' '//NameVar_V(iVar)
+    end do
+    NameVar = trim(NameVar)//' LagrID X Y Z iShock RShock StartTime'// &
+         ' StartTimeJulian'
+
+    if(UseAppendedWrite) then
+      call make_mh_data_file_name('', NameFile)
+    else
+      call get_time_string(DataInputTime, StringTime)
+      write(StringTag, '(a,i6.6)') 't'//StringTime//'_n', iIterIn
+      call make_mh_data_file_name(StringTag, NameFile)
+      ! add the tag to the tag list
+      open(905, file=OutputDir//MhDataTagFile, position='append', &
+           action='write')
+      write(905, '(a)') trim(StringTag)
+      close(905)
+    end if
+
+    call save_plot_file(NameFile, &
+         TypePositionIn = merge('append', 'rewind', UseAppendedWrite), &
+         TypeFileIn     = 'ascii', &
+         StringHeaderIn = 'MITTENS: data along a field line; '// &
+         'Coordinate system: '//TypeCoordSystem, &
+         nStepIn        = iIterIn, &
+         TimeIn         = DataInputTime, &
+         ParamIn_I      = Param_I, &
+         NameVarIn      = NameVar, &
+         nDimIn         = 1, &
+         Coord1In_I     = MHData_VIB(LagrID_, &
+         MinLagr(iLine):MaxLagr(iLine), iLine), &
+         VarIn_VI       = MHData_VIB(1:nMhData, &
+         MinLagr(iLine):MaxLagr(iLine), iLine))
+
+  end subroutine save_mh_data
+  !============================================================================
+  subroutine make_mh_data_file_name(StringTag, NameFile)
+
+    ! MH_data_iLon_iLat_<StringTag>.out, or MH_data_iLon_iLat.out for an
+    ! empty StringTag (appended file), in the output directory
+    use PT_ModReadMhData, only: NameMHData, iLonFile, iLatFile
+
+    character(len=*), intent(in)  :: StringTag
+    character(len=*), intent(out) :: NameFile
+    !--------------------------------------------------------------------------
+    if(StringTag == '') then
+      write(NameFile, '(a,i3.3,a,i3.3,a)') OutputDir//NameMHData//'_', &
+           iLonFile, '_', iLatFile, '.out'
+    else
+      write(NameFile, '(a,i3.3,a,i3.3,a)') OutputDir//NameMHData//'_', &
+           iLonFile, '_', iLatFile, '_'//trim(StringTag)//'.out'
+    end if
+
+  end subroutine make_mh_data_file_name
+  !============================================================================
+  subroutine get_time_string(Time, StringTime)
+
+    ! Convert Time into 'ddhhmmss': number of days, hours, minutes and
+    ! seconds after the beginning of the simulation (as in MFLAMPA)
+    real,             intent(in) :: Time
+    character(len=8), intent(out):: StringTime
+    !--------------------------------------------------------------------------
+    StringTime = '99999999'  ! This is the value if the time is too large
+    if(Time < 100.0*86400) &
+         write(StringTime,'(i2.2,i2.2,i2.2,i2.2)') &
+         int(                  Time          /86400.), & ! # days
+         int((Time-(86400.*int(Time/86400.)))/ 3600.), & ! # hours
+         int((Time-( 3600.*int(Time/ 3600.)))/   60.), & ! # minutes
+         int( Time-(   60.*int(Time/   60.)))            ! # seconds
+
+  end subroutine get_time_string
   !============================================================================
   subroutine save_position_bins(Time)
 

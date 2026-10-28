@@ -29,18 +29,21 @@ module PT_ModReadMhData
   ! If true, read all time levels from a single appended file per line
   ! (set via #APPENDMHDATA); otherwise one file per time level, tag driven
   logical, public :: UseAppendedRead = .false.
+  ! If true, save all time levels of the MH data into a single appended
+  ! file per line (set via #APPENDMHDATA); otherwise one file per time level
+  logical, public :: UseAppendedWrite = .false.
   ! the input directory
   character(len=100)         :: NameInputDir=""
   ! the name with list of file tags (used only when .not.UseAppendedRead)
   character(len=100)         :: NameTagFile=""
   ! the input file name base
-  character(len=*), parameter:: NameMHData = "MH_data"
+  character(len=*), public, parameter:: NameMHData = "MH_data"
   character(len=4)           :: NameFileExtension
   character(len=20)          :: TypeMhDataFile
 
   ! IO unit for file with list of tags (non-appended read mode)
   integer :: iIOTag
-  integer :: iLonFile, iLatFile
+  integer, public :: iLonFile, iLatFile
 
   ! Per-line file units for appended read mode; all lines read the same
   ! appended file independently, each unit keeping its own position
@@ -90,6 +93,8 @@ contains
       case('#APPENDMHDATA')
          ! read all time levels from a single appended file per line
          call read_var('UseAppendedRead', UseAppendedRead)
+         ! save all time levels into a single appended file per line
+         call read_var('UseAppendedWrite', UseAppendedWrite)
       end select
 
    end subroutine read_param
