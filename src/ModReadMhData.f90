@@ -122,8 +122,15 @@ contains
          do iLine = 1, nLine
             if(.not.Used_B(iLine)) CYCLE
             iUnit_B(iLine) = io_unit_new()
-            call open_file(iUnitIn=iUnit_B(iLine), &
-               file=NameFile, status='old', NameCaller=NameSub)
+            ! read_plot_file re-opens the unit with form='unformatted' for
+            ! binary files, so they must be connected unformatted
+            if(TypeMhDataFile == 'real4' .or. TypeMhDataFile == 'real8') then
+               call open_file(iUnitIn=iUnit_B(iLine), file=NameFile, &
+                  form='unformatted', status='old', NameCaller=NameSub)
+            else
+               call open_file(iUnitIn=iUnit_B(iLine), &
+                  file=NameFile, status='old', NameCaller=NameSub)
+            end if
          end do
       else
          ! open the file with the list of tags

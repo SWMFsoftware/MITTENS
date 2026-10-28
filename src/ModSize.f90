@@ -12,7 +12,7 @@ module PT_ModSize
   integer, parameter:: nDim = 2
 
   ! Max possible index of a particle on a line set by Config.pl
-  integer, parameter:: nVertexMax  = 6000
+  integer, parameter:: nVertexMax  = 12000
 
 end module PT_ModSize
 !==============================================================================
